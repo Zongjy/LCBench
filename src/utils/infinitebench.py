@@ -32,7 +32,7 @@ ALL_TASKS = [
 def load_data():
     """
     Load InfiniteBench dataset from HuggingFace.
-    
+
     Returns:
         Loaded dataset with proper features schema
     """
@@ -55,11 +55,11 @@ def load_data():
 def get_answer(eg: Dict, data_name: str) -> Union[str, List[str]]:
     """
     Extract the correct answer format for different InfiniteBench tasks.
-    
+
     Args:
         eg: Example dictionary containing answer and options
         data_name: Name of the dataset/task
-        
+
     Returns:
         Formatted answer(s)
     """
@@ -84,11 +84,11 @@ def get_answer(eg: Dict, data_name: str) -> Union[str, List[str]]:
 def first_int_match(prediction: str) -> int:
     """
     Check if the first integer in prediction matches ground truth.
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Ground truth string
-        
+
     Returns:
         1 if first integer matches, 0 otherwise
     """
@@ -104,11 +104,11 @@ def first_int_match(prediction: str) -> int:
 def in_match(prediction: str, ground_truth: str) -> int:
     """
     Check if ground truth is contained in prediction.
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Ground truth string
-        
+
     Returns:
         1 if ground truth is in prediction, 0 otherwise
     """
@@ -121,10 +121,10 @@ def qa_f1_score(line: Dict) -> float:
     """
     Calculate F1 score for QA tasks with potentially multiple ground truths.
     This is InfiniteBench's specific implementation that differs from the common one.
-    
+
     Args:
         line: Dictionary containing 'pred' and 'std_out' keys
-        
+
     Returns:
         Maximum F1 score across all ground truths
     """

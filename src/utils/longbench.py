@@ -14,12 +14,12 @@ from fuzzywuzzy import fuzz
 def count_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Count the number of correct numerical answers in prediction.
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Correct answer
         **kwargs: Additional arguments
-        
+
     Returns:
         Score as ratio of correct numbers to total numbers found
     """
@@ -35,12 +35,12 @@ def count_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def retrieval_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Score for retrieval tasks (English).
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Ground truth with format "Paragraph X"
         **kwargs: Additional arguments
-        
+
     Returns:
         Score as ratio of correct paragraph numbers
     """
@@ -59,12 +59,12 @@ def retrieval_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def retrieval_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Score for retrieval tasks (Chinese).
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Ground truth with format "段落X"
         **kwargs: Additional arguments
-        
+
     Returns:
         Score as ratio of correct paragraph numbers
     """
@@ -83,12 +83,12 @@ def retrieval_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def code_sim_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Calculate code similarity score using fuzzy string matching.
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Ground truth code
         **kwargs: Additional arguments
-        
+
     Returns:
         Similarity score between 0 and 1
     """
@@ -104,28 +104,28 @@ def code_sim_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def classification_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Score for classification tasks.
-    
+
     Args:
         prediction: Model prediction
         ground_truth: Correct class label
         **kwargs: Must contain 'all_classes' key with list of all possible classes
-        
+
     Returns:
         Classification score
     """
     em_match_list = []
     all_classes = kwargs["all_classes"]
-    
+
     # Find all classes mentioned in prediction
     for class_name in all_classes:
         if class_name in prediction:
             em_match_list.append(class_name)
-    
+
     # Remove shorter matches that are substrings of longer ones
     for match_term in em_match_list:
         if match_term in ground_truth and match_term != ground_truth:
             em_match_list.remove(match_term)
-    
+
     if em_match_list:
         if ground_truth in em_match_list:
             score = 1.0 / len(em_match_list)
@@ -141,5 +141,5 @@ def classification_score(prediction: str, ground_truth: str, **kwargs) -> float:
                 highest_similarity = similarity
                 best_match = string
         score = float(best_match == ground_truth)
-    
-    return score 
+
+    return score

@@ -19,13 +19,14 @@ def normalize_answer(s: str) -> str:
     """
     Lower text and remove punctuation, articles and extra whitespace.
     Used for English text normalization.
-    
+
     Args:
         s: Input string to normalize
-        
+
     Returns:
         Normalized string
     """
+
     def remove_articles(text: str) -> str:
         return re.sub(r"\b(a|an|the)\b", " ", text)
 
@@ -46,18 +47,22 @@ def normalize_zh_answer(s: str) -> str:
     """
     Lower text and remove punctuation, extra whitespace.
     Used for Chinese text normalization.
-    
+
     Args:
         s: Input string to normalize
-        
+
     Returns:
         Normalized string
     """
+
     def white_space_fix(text: str) -> str:
         return "".join(text.split())
 
     def remove_punc(text: str) -> str:
-        cn_punctuation = "！？｡。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—''‛""„‟…‧﹏."
+        cn_punctuation = (
+            "！？｡。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—''‛"
+            "„‟…‧﹏."
+        )
         all_punctuation = set(string.punctuation + cn_punctuation)
         return "".join(ch for ch in text if ch not in all_punctuation)
 
@@ -70,12 +75,12 @@ def normalize_zh_answer(s: str) -> str:
 def rouge_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Calculate ROUGE-L F1 score between prediction and ground truth.
-    
+
     Args:
         prediction: Predicted text
         ground_truth: Ground truth text
         **kwargs: Additional arguments (for compatibility)
-        
+
     Returns:
         ROUGE-L F1 score
     """
@@ -91,12 +96,12 @@ def rouge_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def rouge_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Calculate ROUGE-L F1 score for Chinese text.
-    
+
     Args:
         prediction: Predicted text
         ground_truth: Ground truth text
         **kwargs: Additional arguments (for compatibility)
-        
+
     Returns:
         ROUGE-L F1 score for Chinese text
     """
@@ -106,15 +111,17 @@ def rouge_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
     return score
 
 
-def f1_score(prediction: Union[str, List[str]], ground_truth: Union[str, List[str]], **kwargs) -> float:
+def f1_score(
+    prediction: Union[str, List[str]], ground_truth: Union[str, List[str]], **kwargs
+) -> float:
     """
     Calculate F1 score between prediction and ground truth.
-    
+
     Args:
         prediction: Predicted tokens or string
         ground_truth: Ground truth tokens or string
         **kwargs: Additional arguments (for compatibility)
-        
+
     Returns:
         F1 score
     """
@@ -131,12 +138,12 @@ def f1_score(prediction: Union[str, List[str]], ground_truth: Union[str, List[st
 def qa_f1_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Calculate F1 score for QA tasks (English).
-    
+
     Args:
         prediction: Predicted answer
         ground_truth: Ground truth answer
         **kwargs: Additional arguments (for compatibility)
-        
+
     Returns:
         F1 score
     """
@@ -151,12 +158,12 @@ def qa_f1_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def qa_f1_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
     Calculate F1 score for QA tasks (Chinese).
-    
+
     Args:
         prediction: Predicted answer
         ground_truth: Ground truth answer
         **kwargs: Additional arguments (for compatibility)
-        
+
     Returns:
         F1 score
     """
@@ -172,11 +179,11 @@ def qa_f1_zh_score(prediction: str, ground_truth: str, **kwargs) -> float:
 def iter_jsonl(fname: str, cnt: int = None) -> Generator[Dict[str, Any], None, None]:
     """
     Iterate over lines in a JSONL file.
-    
+
     Args:
         fname: Path to JSONL file
         cnt: Maximum number of lines to read (None for all)
-        
+
     Yields:
         Parsed JSON objects
     """
@@ -192,7 +199,7 @@ def iter_jsonl(fname: str, cnt: int = None) -> Generator[Dict[str, Any], None, N
 def dump_jsonl(data: List[Dict[str, Any]], fname: str) -> None:
     """
     Write data to a JSONL file.
-    
+
     Args:
         data: List of dictionaries to write
         fname: Output file path
@@ -205,7 +212,7 @@ def dump_jsonl(data: List[Dict[str, Any]], fname: str) -> None:
 def dump_json(data: Any, fname: str) -> None:
     """
     Write data to a JSON file.
-    
+
     Args:
         data: Data to write
         fname: Output file path
@@ -214,15 +221,17 @@ def dump_json(data: Any, fname: str) -> None:
         json.dump(data, fout, indent=2, ensure_ascii=False)
 
 
-def truncate_input_tokens(input_ids: List[int], max_length: int, manner: str = "middle") -> List[int]:
+def truncate_input_tokens(
+    input_ids: List[int], max_length: int, manner: str = "middle"
+) -> List[int]:
     """
     Truncate input token IDs to maximum length.
-    
+
     Args:
         input_ids: List of token IDs to truncate
         max_length: Maximum allowed length
         manner: Truncation method ("middle" supported)
-        
+
     Returns:
         Truncated token IDs list
     """
@@ -232,4 +241,4 @@ def truncate_input_tokens(input_ids: List[int], max_length: int, manner: str = "
         return input_ids[0 : max_length // 2] + input_ids[-max_length // 2 :]
     else:
         # 默认从末尾截断
-        return input_ids[:max_length] 
+        return input_ids[:max_length]

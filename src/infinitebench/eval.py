@@ -5,14 +5,14 @@ from pathlib import Path
 from tqdm import tqdm
 
 from src.utils import (
+    ALL_TASKS,
+    dump_json,
+    # InfiniteBench specific
+    first_int_match,
     # Common utilities
     iter_jsonl,
     qa_f1_zh_score,
-    dump_json,
     rouge_score,
-    # InfiniteBench specific
-    first_int_match,
-    ALL_TASKS,
 )
 from src.utils.infinitebench import qa_f1_score  # InfiniteBench specific version
 
@@ -229,7 +229,6 @@ def get_score_one_math_calc(pred, label) -> float:
         if item != "":
             pred_nums.append(int(item))
 
-
     cnt = 0
     for i in range(len(label)):
         if i >= len(pred_nums):
@@ -317,16 +316,20 @@ def compute_scores(preds_path, data_name: str, model_name: str):
     return acc
 
 
-
 if __name__ == "__main__":
     args = parse_args()
 
-    result_dir = Path(args.base_dir, "result", "infinitebench", f"{args.model}_{args.desc}" if args.desc else args.model)
-    
+    result_dir = Path(
+        args.base_dir,
+        "result",
+        "infinitebench",
+        f"{args.model}_{args.desc}" if args.desc else args.model,
+    )
+
     acc_list = []
     for task in ALL_TASKS:
         preds_path = result_dir / f"{task}.jsonl"
         assert preds_path.exists(), f"Predictions not found in: {preds_path}"
         acc_list.append({task: compute_scores(preds_path, task, args.model)})
-    
+
     dump_json(acc_list, result_dir / "result.json")

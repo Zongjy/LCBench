@@ -22,34 +22,11 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Evaluate a language model on LongBench tasks using OpenAI-compatible API"
     )
-    parser.add_argument(
-        "--base_dir", 
-        type=str, 
-        help="Base directory for LongBench"
-    )
-    parser.add_argument(
-        "--model", 
-        type=str, 
-        required=True, 
-        help="Model name"
-    )
-    parser.add_argument(
-        "--api_url", 
-        type=str, 
-        required=True, 
-        help="API URL"
-    )
-    parser.add_argument(
-        "--api_key", 
-        type=str, 
-        required=True, 
-        help="API Key"
-    )
-    parser.add_argument(
-        "--e", 
-        action="store_true", 
-        help="Evaluate on LongBench-E"
-    )
+    parser.add_argument("--base_dir", type=str, help="Base directory for LongBench")
+    parser.add_argument("--model", type=str, required=True, help="Model name")
+    parser.add_argument("--api_url", type=str, required=True, help="API URL")
+    parser.add_argument("--api_key", type=str, required=True, help="API Key")
+    parser.add_argument("--e", action="store_true", help="Evaluate on LongBench-E")
     parser.add_argument(
         "--desc",
         type=str,
@@ -63,10 +40,7 @@ def parse_args():
         help="Comma-separated list of datasets or 'all'",
     )
     parser.add_argument(
-        "--temperature", 
-        type=float, 
-        default=0.0, 
-        help="Temperature for generation"
+        "--temperature", type=float, default=0.0, help="Temperature for generation"
     )
     return parser.parse_args()
 
@@ -79,10 +53,18 @@ class LongBenchConfig:
 
         # 加载配置文件
         self.config_dir = Path(self.base_dir) / "config"
-        self.model2path = json.load(open(Path(self.config_dir) / "model2path.json", "r"))
-        self.model2maxlen = json.load(open(Path(self.config_dir) / "model2maxlen.json", "r"))
-        self.dataset2prompt = json.load(open(Path(self.config_dir) / "longbench" / "dataset2prompt.json", "r"))
-        self.dataset2maxlen = json.load(open(Path(self.config_dir) / "longbench" / "dataset2maxlen.json", "r"))
+        self.model2path = json.load(
+            open(Path(self.config_dir) / "model2path.json", "r")
+        )
+        self.model2maxlen = json.load(
+            open(Path(self.config_dir) / "model2maxlen.json", "r")
+        )
+        self.dataset2prompt = json.load(
+            open(Path(self.config_dir) / "longbench" / "dataset2prompt.json", "r")
+        )
+        self.dataset2maxlen = json.load(
+            open(Path(self.config_dir) / "longbench" / "dataset2maxlen.json", "r")
+        )
 
 
 class LongBenchPredictor:
@@ -101,33 +83,35 @@ class LongBenchPredictor:
     def build_prompt(self, json_obj: Dict, prompt_format: str) -> str:
         """
         构建完整的 LongBench 任务 prompt
-        
+
         Args:
             json_obj: 输入示例字典
             prompt_format: prompt 模板字符串
-        
+
         Returns:
             str: 完整的 prompt 字符串
         """
         try:
             return prompt_format.format(**json_obj)
         except KeyError as e:
-            print(f"Skipped sample due to missing key in json_obj for prompt format: {e}")
+            print(
+                f"Skipped sample due to missing key in json_obj for prompt format: {e}"
+            )
             return ""
 
     def chat(self, messages: List[Dict[str, str]], max_tokens: int = 1024) -> str:
         """发送聊天请求并返回响应。
-        
+
         Args:
             messages: 消息列表，格式为 [{"role": "user", "content": "..."}, ...]
             max_tokens: 最大生成 token 数
-            
+
         Returns:
             str: 模型的响应文本
         """
         # 从消息中提取 prompt（假设只有一个用户消息）
         prompt = messages[0]["content"] if messages and "content" in messages[0] else ""
-        
+
         max_len = self.config.model2maxlen.get(self.model_name, 2048) - max_tokens
         input_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
 
@@ -179,12 +163,14 @@ class LongBenchPredictor:
         ):
             prompt = self.build_prompt(json_obj, prompt_format)
             if not prompt:
-                print(f"Rank {rank} (PID: {os.getpid()}) Skipped sample due to prompt build failure.")
+                print(
+                    f"Rank {rank} (PID: {os.getpid()}) Skipped sample due to prompt build failure."
+                )
                 continue
 
             output = self.chat(
-                messages=[{"role": "user", "content": prompt}], 
-                max_tokens=max_new_tokens
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_new_tokens,
             )
             if output == "":
                 print(
@@ -224,7 +210,15 @@ class LongBenchPredictor:
             return None
 
     def process_dataset(
-        self, dataset, prompt_format, max_new_tokens, out_path, lock, rank, world_size, is_eval=False
+        self,
+        dataset,
+        prompt_format,
+        max_new_tokens,
+        out_path,
+        lock,
+        rank,
+        world_size,
+        is_eval=False,
     ):
         """处理单个数据集"""
         print(f"Rank {rank} (PID: {os.getpid()}): Processing dataset {dataset}...")
@@ -334,7 +328,9 @@ def main(args):
         )
 
     print(f"Rank {rank}: All datasets processed.")
-    print(f"Please run `python src/longbench/eval.py --model {args.model} --desc {args.desc}` to evaluate the results.")
+    print(
+        f"Please run `python src/longbench/eval.py --model {args.model} --desc {args.desc}` to evaluate the results."
+    )
 
 
 if __name__ == "__main__":

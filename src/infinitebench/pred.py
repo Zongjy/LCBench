@@ -11,12 +11,12 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from src.utils import (
-    # Common utilities
-    truncate_input_tokens,
     # InfiniteBench specific
     ALL_TASKS,
     get_answer,
     load_data,
+    # Common utilities
+    truncate_input_tokens,
 )
 
 
@@ -126,7 +126,6 @@ class InfiniteBenchPredictor:
         )
         self.client = OpenAI(base_url=api_url, api_key=api_key)
 
-    
     def build_prompt(
         self,
         eg: dict,
@@ -137,14 +136,14 @@ class InfiniteBenchPredictor:
     ) -> str:
         """
         构建完整的 InfiniteBench 任务 prompt
-        
+
         Args:
             eg: 输入示例字典
             task: 任务名称
             tokenizer: 分词器
             max_tokens: 最大 token 数
             prompt_template: prompt 模板
-        
+
         Returns:
             str: 完整的 prompt 字符串
         """
@@ -174,7 +173,12 @@ class InfiniteBenchPredictor:
         elif task == "longdialogue_qa_eng":
             script = eg["context"]
             prompt = prompt_template.format(context=script)
-        elif task in ["longbook_choice_eng", "longbook_qa_eng", "longbook_sum_eng", "longbook_qa_chn"]:
+        elif task in [
+            "longbook_choice_eng",
+            "longbook_qa_eng",
+            "longbook_sum_eng",
+            "longbook_qa_chn",
+        ]:
             book = eg["context"]
             if task == "longbook_choice_eng":
                 prompt = prompt_template.format(
@@ -227,11 +231,10 @@ class InfiniteBenchPredictor:
             prompt = tokenizer.decode(tokens)
         return prompt
 
-
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         max_tokens = kwargs.get("max_tokens")
         temperature = kwargs.get("temperature", self.temperature)
-        
+
         tries = 0
         while tries < 5:
             tries += 1
@@ -252,58 +255,69 @@ class InfiniteBenchPredictor:
             print(f"PID {os.getpid()} Max tries. Failed.")
             return ""
 
-    def process_task(self, task: str, dataset: List[Dict], out_path: str, 
-                    lock: multiprocessing.Lock, rank: int, world_size: int):
+    def process_task(
+        self,
+        task: str,
+        dataset: List[Dict],
+        out_path: str,
+        lock: multiprocessing.Lock,
+        rank: int,
+        world_size: int,
+    ):
         data_subset = dataset[rank::world_size]
         print(
             f"Rank {rank}/{world_size} (PID: {os.getpid()}) processing {len(data_subset)} samples for task {task}..."
         )
 
         tqdm_position = rank % 8
-        for i, eg in enumerate(tqdm(
-            data_subset,
-            desc=f"Rank {rank} {task}",
-            unit="sample",
-            position=tqdm_position,
-        )):
+        for i, eg in enumerate(
+            tqdm(
+                data_subset,
+                desc=f"Rank {rank} {task}",
+                unit="sample",
+                position=tqdm_position,
+            )
+        ):
             prompt = self.build_prompt(
                 eg,
                 task,
                 tokenizer=self.tokenizer,
-                max_tokens=self.config.model2maxlen[self.model_name] - self.config.dataset2maxlen[task] - 128,
+                max_tokens=self.config.model2maxlen[self.model_name]
+                - self.config.dataset2maxlen[task]
+                - 128,
                 prompt_template=self.config.dataset2prompt[task],
             )
-            
+
             try:
                 response = self.chat(
                     messages=[{"role": "user", "content": prompt}],
                     temperature=self.temperature,
                     max_tokens=self.config.dataset2maxlen[task],
                 )
-                
+
                 result = {
                     "id": rank * len(data_subset) + i,
                     "prediction": response,
                     "ground_truth": get_answer(eg, task),
                     "rank": rank,
                 }
-                
+
                 with lock:
                     with open(out_path, "a", encoding="utf-8") as f:
                         json.dump(result, f, ensure_ascii=False)
                         f.write("\n")
-                        
+
             except Exception as e:
                 print(f"Rank {rank} ERROR: {e}")
 
 
 def main():
     args = parse_args()
-    
+
     # 获取并发参数
     rank = int(os.environ.get("RANK", "0"))
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    
+
     if rank < 0 or rank >= world_size:
         raise ValueError(f"Invalid RANK ({rank}) or WORLD_SIZE ({world_size})")
 
@@ -326,9 +340,7 @@ def main():
 
     # 处理每个任务
     lock = multiprocessing.Lock()
-    for task in tqdm(
-        tasks, desc="Processing Tasks", unit="task", disable=rank != 0
-    ):
+    for task in tqdm(tasks, desc="Processing Tasks", unit="task", disable=rank != 0):
         out_dir = (
             Path(args.base_dir)
             / "result"
@@ -350,7 +362,9 @@ def main():
         )
 
     print(f"Rank {rank}: All tasks processed.")
-    print(f"Please run `python src/infinitebench/eval.py --model {args.model} --desc {args.desc} --base_dir {args.base_dir}` to evaluate the results.")
+    print(
+        f"Please run `python src/infinitebench/eval.py --model {args.model} --desc {args.desc} --base_dir {args.base_dir}` to evaluate the results."
+    )
 
 
 if __name__ == "__main__":

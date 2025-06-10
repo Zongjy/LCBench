@@ -11,7 +11,7 @@ API_KEY="None"
 
 # 实验配置
 DATASETS="all"
-DESC="sar25_sw128"
+DESC="sar15_sw128"
 TEMPERATURE=0.0
 
 export TOKENIZERS_PARALLELISM=true
