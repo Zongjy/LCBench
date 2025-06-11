@@ -1,22 +1,26 @@
 import json
 import multiprocessing
 import os
+import sys
 import time
 from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# 添加项目根目录到Python路径
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # 从src/infinitebench/pred.py到项目根目录
+sys.path.insert(0, str(project_root))
+
 from openai import OpenAI
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from src.utils import (
-    # InfiniteBench specific
+from src.utils.common import truncate_input_tokens
+from src.utils.infinitebench import (
     ALL_TASKS,
     get_answer,
     load_data,
-    # Common utilities
-    truncate_input_tokens,
 )
 
 
@@ -40,24 +44,29 @@ def parse_args() -> Namespace:
     p.add_argument(
         "--task",
         type=str,
+        nargs='+',
         required=True,
-        help="""Which task to use, Or use "all" to evaluate on all tasks.
+        help="""Which task(s) to use. Can be:
+  - "all" to evaluate on all tasks
+  - One or more task names separated by spaces
+  - Comma-separated task names in quotes
 Available tasks:
-Task Name         | Name to use as an argument:
----------------------------------------------
-    En.Sum        | longbook_sum_eng
-    En.QA 	  | longbook_qa_eng
-    En.MC 	  | longbook_choice_eng
-    En.Dia 	  | longdialogue_qa_eng
-    Zh.QA 	  | longbook_qa_chn
-    Code.Debug 	     | code_debug
-    Code.Run 	     | code_run
-    Math.Calc 	     | math_calc
-    Math.Find 	     | math_find
-    Retrieve.PassKey | passkey
-    Retrieve.Number  | number_string
-    Retrieve.KV      | kv_retrieval
----------------------------------------------
+    passkey
+    number_string
+    kv_retrieval
+    longdialogue_qa_eng
+    longbook_sum_eng
+    longbook_choice_eng
+    longbook_qa_eng
+    longbook_qa_chn
+    math_find
+    math_calc
+    code_run
+    code_debug
+Examples:
+    --task all
+    --task passkey number_string
+    --task "passkey,number_string,kv_retrieval"
     """,
     )
     p.add_argument(
@@ -134,19 +143,6 @@ class InfiniteBenchPredictor:
         max_tokens: Optional[int] = None,
         prompt_template: Optional[str] = None,
     ) -> str:
-        """
-        构建完整的 InfiniteBench 任务 prompt
-
-        Args:
-            eg: 输入示例字典
-            task: 任务名称
-            tokenizer: 分词器
-            max_tokens: 最大 token 数
-            prompt_template: prompt 模板
-
-        Returns:
-            str: 完整的 prompt 字符串
-        """
         import re
 
         if task == "code_run":
@@ -213,6 +209,13 @@ class InfiniteBenchPredictor:
                 context=eg["context"],
                 input=eg["input"],
             )
+        elif task == "kv_retrieval":
+            format_dict = {
+                "context": eg["content"] if "content" in eg else eg["context"],
+                "input": eg["input"],
+                "key": eg["input"][6:44]
+            }
+            prompt = prompt_template.format(**format_dict)
         else:
             if "content" in eg:
                 content = eg["content"]
@@ -232,7 +235,7 @@ class InfiniteBenchPredictor:
         return prompt
 
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        max_tokens = kwargs.get("max_tokens")
+        max_gen_tokens = kwargs.get("max_gen_tokens")
         temperature = kwargs.get("temperature", self.temperature)
 
         tries = 0
@@ -243,7 +246,7 @@ class InfiniteBenchPredictor:
                     model=self.config.model2path[self.model_name],
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=max_tokens,
+                    max_tokens=max_gen_tokens,
                 )
                 return completion.choices[0].message.content
             except KeyboardInterrupt as e:
@@ -292,7 +295,7 @@ class InfiniteBenchPredictor:
                 response = self.chat(
                     messages=[{"role": "user", "content": prompt}],
                     temperature=self.temperature,
-                    max_tokens=self.config.dataset2maxlen[task],
+                    max_gen_tokens=self.config.dataset2maxlen[task],
                 )
 
                 result = {
@@ -333,12 +336,26 @@ def main():
     )
 
     datasets = load_data()
-    if args.task == "all":
+    
+    if len(args.task) == 1 and args.task[0] == "all":
         tasks = ALL_TASKS
     else:
-        tasks = [args.task]
+        tasks = []
+        for task_item in args.task:
+            if ',' in task_item:
+                tasks.extend([t.strip() for t in task_item.split(',') if t.strip()])
+            else:
+                tasks.append(task_item.strip())
+        
+        invalid_tasks = [t for t in tasks if t not in ALL_TASKS]
+        if invalid_tasks:
+            print(f"错误：无效的任务名称: {invalid_tasks}")
+            print(f"可用的任务: {ALL_TASKS}")
+            return
+            
+        tasks = list(dict.fromkeys(tasks))
+    
 
-    # 处理每个任务
     lock = multiprocessing.Lock()
     for task in tqdm(tasks, desc="Processing Tasks", unit="task", disable=rank != 0):
         out_dir = (

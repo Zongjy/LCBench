@@ -17,7 +17,7 @@ TEMPERATURE=0.0
 export TOKENIZERS_PARALLELISM=true
 
 
-PYTHONPATH=$BASE_DIR torchrun --nproc_per_node=$N $BASE_DIR/src/longbench/pred.py \
+torchrun --nproc_per_node=$N $BASE_DIR/src/longbench/pred.py \
     --base_dir $BASE_DIR \
     --model $MODEL_NAME \
     --datasets $DATASETS \

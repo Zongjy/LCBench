@@ -3,22 +3,29 @@ import argparse
 import glob
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# 添加项目根目录到Python路径
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # 从src/longbench/eval.py到项目根目录
+sys.path.insert(0, str(project_root))
 
 import numpy as np
 
-from src.utils import (
-    # LongBench specific
+from src.utils.common import (
+    qa_f1_score,
+    qa_f1_zh_score,
+    rouge_score,
+    rouge_zh_score,
+)
+from src.utils.longbench import (
     classification_score,
     code_sim_score,
     count_score,
-    # Common utilities
-    qa_f1_score,
-    qa_f1_zh_score,
     retrieval_score,
     retrieval_zh_score,
-    rouge_score,
-    rouge_zh_score,
 )
 
 USER = os.getenv("USER")
@@ -111,8 +118,9 @@ def scorer(
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default=None)
-    parser.add_argument("--e", action="store_true", help="Evaluate on LongBench-E")
     parser.add_argument("--desc", type=str, default=None)
+    parser.add_argument("--base_dir", type=str, default=None)
+    parser.add_argument("--e", action="store_true", help="Evaluate on LongBench-E")
     return parser.parse_args(args)
 
 
@@ -147,9 +155,7 @@ def main():
     args = parse_args()
     scores = {}
     model_name = args.model + ("_" + args.desc if args.desc else "")
-    save_dir = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "result", "longbench")
-    )
+    save_dir = os.path.join(args.base_dir, "result", "longbench")
 
     # 设置预测文件路径
     pred_type = "pred_e" if args.e else "pred"

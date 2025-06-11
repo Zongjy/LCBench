@@ -1,20 +1,35 @@
+import argparse
+import json
+import os
 import re
+import sys
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# 添加项目根目录到Python路径
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # 从src/infinitebench/eval.py到项目根目录
+sys.path.insert(0, str(project_root))
+
+import numpy as np
 
 from tqdm import tqdm
 
-from src.utils import (
-    ALL_TASKS,
-    dump_json,
-    # InfiniteBench specific
-    first_int_match,
-    # Common utilities
+from src.utils.common import (
     iter_jsonl,
+    dump_json,
     qa_f1_zh_score,
     rouge_score,
 )
-from src.utils.infinitebench import qa_f1_score  # InfiniteBench specific version
+from src.utils.infinitebench import (
+    ALL_TASKS,
+    first_int_match,
+    get_answer,
+    in_match,
+    load_data,
+    qa_f1_score,  # InfiniteBench specific version
+)
 
 
 def parse_args() -> Namespace:
@@ -300,7 +315,7 @@ def get_score(labels: list, preds: list, data_name: str, model_name: str) -> flo
     assert len(labels) == len(preds)
     scores = []
     for label, pred in tqdm(zip(labels, preds)):
-        score = get_score_one(pred, label, data_name, model_name)
+        score = get_score_one(pred, label, data_name)
         scores.append(score)
     return sum(scores) / len(scores)
 
@@ -309,7 +324,7 @@ def compute_scores(preds_path, data_name: str, model_name: str):
     print("Loading prediction results from", preds_path)
     preds = list(iter_jsonl(preds_path))
     labels = get_labels(preds)
-    preds = get_preds(preds, data_name)
+    preds = get_preds(preds)
 
     acc = get_score(labels, preds, data_name, model_name)
     print(f"Average score for {data_name}: {acc}")

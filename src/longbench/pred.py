@@ -4,9 +4,15 @@ import json
 import multiprocessing
 import os
 import random
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List
+
+# 添加项目根目录到Python路径
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # 从src/longbench/pred.py到项目根目录
+sys.path.insert(0, str(project_root))
 
 import numpy as np
 from datasets import load_dataset
@@ -14,7 +20,7 @@ from openai import OpenAI
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from src.utils import truncate_input_tokens
+from src.utils.common import truncate_input_tokens
 
 
 def parse_args():
@@ -329,7 +335,7 @@ def main(args):
 
     print(f"Rank {rank}: All datasets processed.")
     print(
-        f"Please run `python src/longbench/eval.py --model {args.model} --desc {args.desc}` to evaluate the results."
+        f"Please run `python src/longbench/eval.py --model {args.model} --desc {args.desc} --base_dir {args.base_dir}` to evaluate the results."
     )
 
 
