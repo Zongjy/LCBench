@@ -15,10 +15,11 @@ project_root = current_file.parent.parent.parent  # 从src/longbench/pred.py到�
 sys.path.insert(0, str(project_root))
 
 import numpy as np
+import torch
 from datasets import load_dataset
 from openai import OpenAI
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from src.utils.common import truncate_input_tokens
 
@@ -84,7 +85,7 @@ class LongBenchPredictor:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model2path[model_name], trust_remote_code=True
         )
-        self.client = OpenAI(base_url=api_url, api_key=api_key)
+        self.client = OpenAI(base_url=api_url, api_key=api_key, timeout=3600)
 
     def build_prompt(self, json_obj: Dict, prompt_format: str) -> str:
         """
@@ -139,7 +140,6 @@ class LongBenchPredictor:
                 completion = self.client.chat.completions.create(
                     model=model_path,
                     messages=messages,
-                    temperature=self.temperature,
                     max_tokens=max_tokens,
                 )
                 return completion.choices[0].message.content

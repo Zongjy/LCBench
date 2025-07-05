@@ -133,7 +133,7 @@ class InfiniteBenchPredictor:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model2path[model_name], trust_remote_code=True
         )
-        self.client = OpenAI(base_url=api_url, api_key=api_key)
+        self.client = OpenAI(base_url=api_url, api_key=api_key, timeout=3600)
 
     def build_prompt(
         self,
@@ -232,7 +232,7 @@ class InfiniteBenchPredictor:
             tokens = tokenizer.encode(prompt)
             tokens = truncate_input_tokens(tokens, max_tokens, manner="middle")
             prompt = tokenizer.decode(tokens)
-        return prompt
+        return prompt, len(eg["context"])
 
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         max_gen_tokens = kwargs.get("max_gen_tokens")
@@ -247,6 +247,7 @@ class InfiniteBenchPredictor:
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_gen_tokens,
+                    presence_penalty=1.0,
                 )
                 return completion.choices[0].message.content
             except KeyboardInterrupt as e:
@@ -281,7 +282,7 @@ class InfiniteBenchPredictor:
                 position=tqdm_position,
             )
         ):
-            prompt = self.build_prompt(
+            prompt, context_length = self.build_prompt(
                 eg,
                 task,
                 tokenizer=self.tokenizer,
@@ -298,10 +299,13 @@ class InfiniteBenchPredictor:
                     max_gen_tokens=self.config.dataset2maxlen[task],
                 )
 
+                ans = get_answer(eg, task)
+
                 result = {
                     "id": rank * len(data_subset) + i,
+                    "length": context_length,
                     "prediction": response,
-                    "ground_truth": get_answer(eg, task),
+                    "answers": ans if isinstance(ans, list) else [ans],
                     "rank": rank,
                 }
 
