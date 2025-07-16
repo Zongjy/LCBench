@@ -1,18 +1,19 @@
 #!/bin/bash
 
+export HF_ENDPOINT="https://hf-mirror.com"
 # 基础配置
-N=4
+N=16
 MODEL_NAME="Qwen2.5-7B-Instruct"
 BASE_DIR=$(pwd)
 
 # API配置
-API_URL="http://localhost:11451/v1"
+API_URL="http://localhost:11452/v1"
 API_KEY="None"
 
 # 实验配置
 # 使用Chat_template
 # DATASETS="narrativeqa,qasper,multifieldqa_en,multifieldqa_zh,hotpotqa,2wikimqa,musique,dureader,gov_report,qmsum,multi_news,vcsum,passage_count,passage_retrieval_en,passage_retrieval_zh"
-DATASETS="narrativeqa"
+DATASETS="gov_report"
 
 # 不使用Chat_template
 # DATASETS="trec,triviaqa,samsum,lsht,lcc,repobench-p"
