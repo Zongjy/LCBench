@@ -141,7 +141,7 @@ class LongBenchPredictor:
                     model=model_path,
                     messages=messages,
                     max_tokens=max_tokens,
-                )
+                    temperature=self.temperature)
                 return completion.choices[0].message.content
             except KeyboardInterrupt as e:
                 raise e
