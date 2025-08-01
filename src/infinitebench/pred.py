@@ -69,18 +69,8 @@ Examples:
     --task "passkey,number_string,kv_retrieval"
     """,
     )
-    p.add_argument(
-        "--api_url",
-        type=str,
-        required=True,
-        help="Specify the API URL to use for evaluation",
-    )
-    p.add_argument(
-        "--api_key",
-        type=str,
-        required=True,
-        help="Specify the API key to use for evaluation",
-    )
+    p.add_argument("--api_url", type=str, required=True, help="API URL")
+    p.add_argument("--api_key", type=str, required=True, help="API Key")
     p.add_argument(
         "--temperature",
         type=float,
@@ -137,94 +127,94 @@ class InfiniteBenchPredictor:
 
     def build_prompt(
         self,
-        eg: dict,
-        task: str,
+        json_obj: dict,
+        task_name: str,
         tokenizer=None,
         max_tokens: Optional[int] = None,
         prompt_template: Optional[str] = None,
     ) -> str:
         import re
 
-        if task == "code_run":
-            find_result = re.findall(r"func_[0-9]+\(\-?[0-9]+\)", eg["input"])
+        if task_name == "code_run":
+            find_result = re.findall(r"func_[0-9]+\(\-?[0-9]+\)", json_obj["input"])
             func_call = find_result[0]
             func = func_call.split("(")[0]
             prompt = prompt_template.format(
                 func=func,
                 func_call=func_call,
-                context=eg["context"],
+                context=json_obj["context"],
             )
-        elif task in ["code_debug", "code_debug_qa"]:
-            code = eg["context"]
-            if task == "code_debug":
+        elif task_name in ["code_debug", "code_debug_qa"]:
+            code = json_obj["context"]
+            if task_name == "code_debug":
                 prompt = prompt_template.format(
                     context=code,
-                    OPTION_A=eg["options"][0],
-                    OPTION_B=eg["options"][1],
-                    OPTION_C=eg["options"][2],
-                    OPTION_D=eg["options"][3],
+                    OPTION_A=json_obj["options"][0],
+                    OPTION_B=json_obj["options"][1],
+                    OPTION_C=json_obj["options"][2],
+                    OPTION_D=json_obj["options"][3],
                 )
             else:
                 prompt = prompt_template.format(context=code)
-        elif task == "longdialogue_qa_eng":
-            script = eg["context"]
+        elif task_name == "longdialogue_qa_eng":
+            script = json_obj["context"]
             prompt = prompt_template.format(context=script)
-        elif task in [
+        elif task_name in [
             "longbook_choice_eng",
             "longbook_qa_eng",
             "longbook_sum_eng",
             "longbook_qa_chn",
         ]:
-            book = eg["context"]
-            if task == "longbook_choice_eng":
+            book = json_obj["context"]
+            if task_name == "longbook_choice_eng":
                 prompt = prompt_template.format(
-                    question=eg["input"],
+                    question=json_obj["input"],
                     context=book,
-                    OPTION_A=eg["options"][0],
-                    OPTION_B=eg["options"][1],
-                    OPTION_C=eg["options"][2],
-                    OPTION_D=eg["options"][3],
+                    OPTION_A=json_obj["options"][0],
+                    OPTION_B=json_obj["options"][1],
+                    OPTION_C=json_obj["options"][2],
+                    OPTION_D=json_obj["options"][3],
                 )
-            elif task == "longbook_qa_eng":
+            elif task_name == "longbook_qa_eng":
                 prompt = prompt_template.format(
-                    question=eg["input"],
+                    question=json_obj["input"],
                     context=book,
                 )
-            elif task == "longbook_sum_eng":
+            elif task_name == "longbook_sum_eng":
                 prompt = prompt_template.format(context=book)
-            elif task == "longbook_qa_chn":
+            elif task_name == "longbook_qa_chn":
                 prompt = prompt_template.format(
-                    question=eg["input"],
+                    question=json_obj["input"],
                     context=book,
                 )
-        elif task == "math_calc":
-            prompt = prompt_template.format(context=eg["context"])
-        elif task == "math_find":
-            find_result = re.findall(r"The .+ of", eg["input"])
-            assert find_result, f"Cannot find the target number in {eg['input']}"
+        elif task_name == "math_calc":
+            prompt = prompt_template.format(context=json_obj["context"])
+        elif task_name == "math_find":
+            find_result = re.findall(r"The .+ of", json_obj["input"])
+            assert find_result, f"Cannot find the target number in {json_obj['input']}"
             target_number = find_result[0].lower()[:-3]
             prefix = f"What is {target_number} in the following list?"
             prompt = prompt_template.format(
                 prefix=prefix,
-                context=eg["context"],
-                input=eg["input"],
+                context=json_obj["context"],
+                input=json_obj["input"],
             )
-        elif task == "kv_retrieval":
+        elif task_name == "kv_retrieval":
             format_dict = {
-                "context": eg["content"] if "content" in eg else eg["context"],
-                "input": eg["input"],
-                "key": eg["input"][6:44]
+                "context": json_obj["content"] if "content" in json_obj else json_obj["context"],
+                "input": json_obj["input"],
+                "key": json_obj["input"][6:44]
             }
             prompt = prompt_template.format(**format_dict)
         else:
-            if "content" in eg:
-                content = eg["content"]
-                del eg["content"]
-                eg["context"] = content
+            if "content" in json_obj:
+                content = json_obj["content"]
+                del json_obj["content"]
+                json_obj["context"] = content
 
             format_dict = {
-                "context": eg["context"],
-                "input": eg["input"],
+                "context": json_obj["context"],
+                "input": json_obj["input"],
             }
             prompt = prompt_template.format(**format_dict)
 
@@ -232,9 +222,9 @@ class InfiniteBenchPredictor:
             tokens = tokenizer.encode(prompt)
             tokens = truncate_input_tokens(tokens, max_tokens, manner="middle")
             prompt = tokenizer.decode(tokens)
-        return prompt, len(eg["context"])
+        return prompt, len(json_obj["context"])
 
-    def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
+    def chat(self, prompt: str, **kwargs) -> str:
         max_gen_tokens = kwargs.get("max_gen_tokens")
         temperature = kwargs.get("temperature", self.temperature)
 
@@ -242,14 +232,13 @@ class InfiniteBenchPredictor:
         while tries < 5:
             tries += 1
             try:
-                completion = self.client.chat.completions.create(
+                completion = self.client.completions.create(
                     model=self.config.model2path[self.model_name],
-                    messages=messages,
-                    temperature=temperature,
+                    prompt=prompt,
                     max_tokens=max_gen_tokens,
-                    presence_penalty=1.0,
+                    temperature=temperature,
                 )
-                return completion.choices[0].message.content
+                return completion.choices[0].text
             except KeyboardInterrupt as e:
                 raise e
             except Exception as e:
@@ -261,7 +250,7 @@ class InfiniteBenchPredictor:
 
     def process_task(
         self,
-        task: str,
+        task_name: str,
         dataset: List[Dict],
         out_path: str,
         lock: multiprocessing.Lock,
@@ -270,41 +259,40 @@ class InfiniteBenchPredictor:
     ):
         data_subset = dataset[rank::world_size]
         print(
-            f"Rank {rank}/{world_size} (PID: {os.getpid()}) processing {len(data_subset)} samples for task {task}..."
+            f"Rank {rank}/{world_size} (PID: {os.getpid()}) processing {len(data_subset)} samples for task {task_name}..."
         )
 
         tqdm_position = rank % 8
-        for i, eg in enumerate(
+        for i, json_obj in enumerate(
             tqdm(
                 data_subset,
-                desc=f"Rank {rank} {task}",
+                desc=f"Rank {rank} {task_name}",
                 unit="sample",
                 position=tqdm_position,
             )
         ):
             prompt, context_length = self.build_prompt(
-                eg,
-                task,
+                json_obj=json_obj,
+                task_name=task_name,
                 tokenizer=self.tokenizer,
-                max_tokens=self.config.model2maxlen[self.model_name]
-                - self.config.dataset2maxlen[task]
-                - 128,
-                prompt_template=self.config.dataset2prompt[task],
+                max_tokens=self.config.model2maxlen.get(self.model_name)
+                            - self.config.dataset2maxlen.get(task_name) - 128,
+                prompt_template=self.config.dataset2prompt.get(task_name),
             )
 
             try:
-                response = self.chat(
-                    messages=[{"role": "user", "content": prompt}],
+                output = self.chat(
+                    prompt=prompt,
                     temperature=self.temperature,
-                    max_gen_tokens=self.config.dataset2maxlen[task],
+                    max_gen_tokens=self.config.dataset2maxlen.get(task_name),
                 )
 
-                ans = get_answer(eg, task)
+                ans = get_answer(json_obj, task_name)
 
                 result = {
                     "id": rank * len(data_subset) + i,
+                    "pred": output,
                     "length": context_length,
-                    "prediction": response,
                     "answers": ans if isinstance(ans, list) else [ans],
                     "rank": rank,
                 }
@@ -374,7 +362,7 @@ def main():
 
         # 并发处理任务
         client.process_task(
-            task=task,
+            task_name=task,
             dataset=list(dataset),
             out_path=str(out_path),
             lock=lock,

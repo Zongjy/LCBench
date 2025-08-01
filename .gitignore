@@ -193,7 +193,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-data/longbench/data*
 result/*
 *.zip
 *.tar.gz
+longbench_data/

@@ -7,7 +7,8 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
+
 
 # 添加项目根目录到Python路径
 current_file = Path(__file__).resolve()
@@ -22,6 +23,10 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from src.utils.common import truncate_input_tokens
+from src.utils.longbench import (
+    ALL_TASKS,
+    load_data,
+)
 
 
 def parse_args():
@@ -41,10 +46,41 @@ def parse_args():
         help="Optional description for model name directory",
     )
     parser.add_argument(
-        "--datasets",
+        "--task",
         type=str,
-        default="all",
-        help="Comma-separated list of datasets or 'all'",
+        nargs='+',
+        required=True,
+        help="""Which task(s) to use. Can be:
+  - "all" to evaluate on all tasks
+  - One or more task names separated by spaces
+  - Comma-separated task names in quotes
+Available tasks:
+    narrativeqa,
+    qasper,
+    multifieldqa_en,
+    multifieldqa_zh,
+    hotpotqa,
+    2wikimqa,
+    musique,
+    dureader,
+    gov_report,
+    qmsum,
+    multi_news,
+    vcsum,
+    passage_count
+    passage_retrieval_en
+    passage_retrieval_zh
+    trec
+    triviaqa
+    samsum
+    lsht
+    lcc
+    repobench-p
+Examples:
+    --task all
+    --task 2wikimqa qasper
+    --task "2wikimqa,qasper"
+    """,
     )
     parser.add_argument(
         "--temperature", type=float, default=0.0, help="Temperature for generation"
@@ -87,62 +123,52 @@ class LongBenchPredictor:
         )
         self.client = OpenAI(base_url=api_url, api_key=api_key, timeout=3600)
 
-    def build_prompt(self, json_obj: Dict, prompt_format: str) -> str:
-        """
-        构建完整的 LongBench 任务 prompt
-
-        Args:
-            json_obj: 输入示例字典
-            prompt_format: prompt 模板字符串
-
-        Returns:
-            str: 完整的 prompt 字符串
-        """
-        try:
-            return prompt_format.format(**json_obj)
-        except KeyError as e:
-            print(
-                f"Skipped sample due to missing key in json_obj for prompt format: {e}"
-            )
-            return ""
-
-    def chat(self, messages: List[Dict[str, str]], max_tokens: int = 1024) -> str:
-        """发送聊天请求并返回响应。
-
-        Args:
-            messages: 消息列表，格式为 [{"role": "user", "content": "..."}, ...]
-            max_tokens: 最大生成 token 数
-
-        Returns:
-            str: 模型的响应文本
-        """
-        # 从消息中提取 prompt（假设只有一个用户消息）
-        prompt = messages[0]["content"] if messages and "content" in messages[0] else ""
-
-        max_len = self.config.model2maxlen.get(self.model_name, 2048) - max_tokens
-        input_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
-
-        if len(input_ids) > max_len:
-            input_ids = truncate_input_tokens(input_ids, max_len, manner="middle")
-            prompt = self.tokenizer.decode(input_ids, skip_special_tokens=True)
-            # 更新消息中的内容
+    def build_prompt(
+        self, 
+        json_obj: Dict, 
+        task_name: str,
+        tokenizer=None,
+        max_tokens: Optional[int] = None,
+        prompt_format: Optional[str] = None,
+    ) -> str:
+        if task_name not in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]:
+            prompt = prompt_format.format(**json_obj)
             messages = [{"role": "user", "content": prompt}]
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=False,
+            )
+        else:
+            prompt = prompt_format.format(**json_obj)
+        
+        if tokenizer and max_tokens:
+            tokens = tokenizer.encode(prompt)
+            tokens = truncate_input_tokens(tokens, max_tokens, manner="middle")
+            prompt = tokenizer.decode(tokens)
+        return prompt
 
-        model_path = self.config.model2path.get(self.model_name)
-        if not model_path:
-            print(f"Model {self.model_name} not found in model2path.")
-            return ""
+    def post_process(self, pred: str, task_name: str) -> str:
+        if task_name == "samsum":
+            return pred.split("\n")[0].strip()
+        else:
+            return pred
 
+    def chat(self, prompt: str, **kwargs) -> str:
+        max_gen_tokens = kwargs.get("max_gen_tokens")
+        temperature = kwargs.get("temperature", self.temperature)
+        
         tries = 0
         while tries < 5:
             tries += 1
             try:
-                completion = self.client.chat.completions.create(
-                    model=model_path,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=self.temperature)
-                return completion.choices[0].message.content
+                completion = self.client.completions.create(
+                    model=self.config.model2path.get(self.model_name),
+                    prompt=prompt,
+                    max_tokens=max_gen_tokens,
+                    temperature=temperature
+                )
+                return completion.choices[0].text
             except KeyboardInterrupt as e:
                 raise e
             except Exception as e:
@@ -152,10 +178,16 @@ class LongBenchPredictor:
             print(f"PID {os.getpid()} Max tries. Failed.")
             return ""
 
-    def get_pred(
-        self, data, prompt_format, max_new_tokens, out_path, lock, rank, world_size
+    def process_task(
+        self,
+        task_name: str,
+        dataset: List[Dict],
+        out_path: str,
+        lock: multiprocessing.Lock,
+        rank: int,
+        world_size: int,
     ):
-        data_subset = data[rank::world_size]
+        data_subset = dataset[rank::world_size]
         print(
             f"Rank {rank}/{world_size} (PID: {os.getpid()}) processing {len(data_subset)} samples on {self.api_url} and writing to {out_path}..."
         )
@@ -167,7 +199,14 @@ class LongBenchPredictor:
             unit="sample",
             position=tqdm_position,
         ):
-            prompt = self.build_prompt(json_obj, prompt_format)
+            prompt = self.build_prompt(
+                json_obj=json_obj,
+                task_name=task_name,
+                tokenizer=self.tokenizer, 
+                max_tokens=self.config.model2maxlen.get(self.model_name) 
+                            - self.config.dataset2maxlen.get(task_name) - 128,
+                prompt_format=self.config.dataset2prompt.get(task_name)
+            )
             if not prompt:
                 print(
                     f"Rank {rank} (PID: {os.getpid()}) Skipped sample due to prompt build failure."
@@ -175,90 +214,28 @@ class LongBenchPredictor:
                 continue
 
             output = self.chat(
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_new_tokens,
+                prompt=prompt,
+                temperature=self.temperature,
+                max_gen_tokens=self.config.dataset2maxlen.get(task_name),
             )
             if output == "":
                 print(
                     f"Rank {rank} (PID: {os.getpid()}) chat returned empty string for a sample."
                 )
 
+            pred = self.post_process(output, task_name)
+            result = {
+                "pred": pred,
+                "answers": json_obj.get("answers", "N/A"),
+                "all_classes": json_obj.get("all_classes", "N/A"),
+                "length": json_obj.get("length", "N/A"),
+                "rank": rank,
+            }
+
             with lock:
                 with open(out_path, "a", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "pred": output,
-                            "answers": json_obj.get("answers", "N/A"),
-                            "all_classes": json_obj.get("all_classes", "N/A"),
-                            "length": json_obj.get("length", "N/A"),
-                            "rank": rank,
-                        },
-                        f,
-                        ensure_ascii=False,
-                    )
+                    json.dump(result, f, ensure_ascii=False)
                     f.write("\n")
-
-    def load_dataset_safe(self, dataset_name, is_eval=False):
-        """安全地加载数据集，包含错误处理"""
-        try:
-            dataset_path = str(self.config.data_dir / "LongBench.py")
-            print(f"Loading dataset {dataset_name} from {dataset_path}")
-
-            data = load_dataset(
-                dataset_path,
-                f"{dataset_name}_e" if is_eval else dataset_name,
-                split="test",
-                trust_remote_code=True,
-            )
-            return list(data)
-        except Exception as e:
-            print(f"Failed to load dataset {dataset_name}: {str(e)}")
-            return None
-
-    def process_dataset(
-        self,
-        dataset,
-        prompt_format,
-        max_new_tokens,
-        out_path,
-        lock,
-        rank,
-        world_size,
-        is_eval=False,
-    ):
-        """处理单个数据集"""
-        print(f"Rank {rank} (PID: {os.getpid()}): Processing dataset {dataset}...")
-
-        # 加载数据集
-        data_all = self.load_dataset_safe(dataset, is_eval)
-        if not data_all:
-            print(f"Rank {rank}: No data loaded for {dataset}. Skipping.")
-            return
-
-        # 处理数据
-        self.get_pred(
-            data_all,
-            prompt_format,
-            max_new_tokens,
-            out_path=out_path,
-            lock=lock,
-            rank=rank,
-            world_size=world_size,
-        )
-        print(f"Rank {rank}: Finished dataset {dataset}.")
-
-
-def seed_everything(seed):
-    """Seeds the random number generators for reproducibility."""
-    np.random.seed(seed)
-    random.seed(seed)
-    # torch seeding commented out as per original script's comment
-    # import torch
-    # torch.manual_seed(seed)
-    # if torch.cuda.is_available():
-    #     torch.cuda.manual_seed_all(seed)
-    #     torch.backends.cudnn.benchmark = False
-    #     torch.backends.cudnn.deterministic = True
 
 
 def main(args):
@@ -280,66 +257,64 @@ def main(args):
         temperature=args.temperature,
     )
 
-    # 设置输出目录
-    os.makedirs(config.save_dir, exist_ok=True)
-    model_name = args.model + ("_" + args.desc if args.desc else "")
-    pred_dir = os.path.join(config.save_dir, "pred_e" if args.e else "pred")
-    os.makedirs(pred_dir, exist_ok=True)
+    # # 设置输出目录
+    # model_name = args.model + ("_" + args.desc if args.desc else "")
+    # pred_dir = os.path.join(config.save_dir, model_name)
+    # os.makedirs(pred_dir, exist_ok=True)
 
     # 确定要处理的数据集
     if args.e:
-        datasets = [
-            "qasper",
-            "multifieldqa_en",
-            "hotpotqa",
-            "2wikimqa",
-            "gov_report",
-            "multi_news",
-            "trec",
-            "triviaqa",
-            "samsum",
-            "passage_count",
-            "passage_retrieval_en",
-            "lcc",
-            "repobench-p",
+        tasks = [
+            "qasper", "multifieldqa_en", "hotpotqa", "2wikimqa", "gov_report", "multi_news", "trec", \
+            "triviaqa", "samsum", "passage_count", "passage_retrieval_en", "lcc", "repobench-p"
         ]
     else:
-        datasets = (
-            [d for d in config.dataset2prompt.keys() if not d.endswith("_e")]
-            if args.datasets == "all"
-            else args.datasets.split(",")
-        )
+        if len(args.task) == 1 and args.task[0] == "all":
+            tasks = ALL_TASKS
+        else:
+            tasks = []
+            for task_item in args.task:
+                if ',' in task_item:
+                    tasks.extend([t.strip() for t in task_item.split(',') if t.strip()])
+                else:
+                    tasks.append(task_item.strip())
+            invalid_tasks = [t for t in tasks if t not in ALL_TASKS]
+            if invalid_tasks:
+                print(f"错误：无效的任务名称: {invalid_tasks}")
+                print(f"可用的任务: {ALL_TASKS}")
+                return
+                
+            tasks = list(dict.fromkeys(tasks))
 
-    # 处理每个数据集
+    datasets = load_data()
+    
     lock = multiprocessing.Lock()
-    for dataset in tqdm(
-        datasets, desc="Processing Datasets", unit="dataset", disable=rank != 0
-    ):
-        out_dir = os.path.join(pred_dir, model_name)
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{dataset}.jsonl")
+    for task_name in tqdm(tasks, desc="Processing Tasks", unit="task", disable=rank != 0):
+        out_dir = (
+            Path(args.base_dir)
+            / "result"
+            / "longbench"
+            / (f"{args.model}_{args.desc}" if args.desc else args.model)
+        )
+        out_dir.mkdir(exist_ok=True, parents=True)
+        out_path = out_dir / f"{task_name}.jsonl"
+        dataset = datasets[task_name]
 
-        prompt_format = config.dataset2prompt.get(dataset)
-        max_new_tokens = config.dataset2maxlen.get(dataset)
-
-        predictor.process_dataset(
-            dataset=dataset,
-            prompt_format=prompt_format,
-            max_new_tokens=max_new_tokens,
-            out_path=out_path,
+        predictor.process_task(
+            task_name=task_name,
+            dataset=list(dataset),
+            out_path=str(out_path),
             lock=lock,
             rank=rank,
             world_size=world_size,
-            is_eval=args.e,
         )
 
-    print(f"Rank {rank}: All datasets processed.")
+    print(f"Rank {rank}: All tasks processed.")
     print(
         f"Please run `python src/longbench/eval.py --model {args.model} --desc {args.desc} --base_dir {args.base_dir}` to evaluate the results."
     )
 
 
 if __name__ == "__main__":
-    seed_everything(42)
     args = parse_args()
     main(args)

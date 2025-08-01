@@ -6,10 +6,14 @@ This module contains scoring functions and utilities specific to LongBench evalu
 
 import difflib
 import re
+import jsonlines
 from typing import Any, Dict, List
-
+from datasets import load_dataset
 from fuzzywuzzy import fuzz
 
+ALL_TASKS = ["narrativeqa", "qasper", "multifieldqa_en", "multifieldqa_zh", "hotpotqa", "2wikimqa", "musique", \
+            "dureader", "gov_report", "qmsum", "multi_news", "vcsum", "trec", "triviaqa", "samsum", "lsht", \
+            "passage_count", "passage_retrieval_en", "passage_retrieval_zh", "lcc", "repobench-p"]
 
 def count_score(prediction: str, ground_truth: str, **kwargs) -> float:
     """
@@ -143,3 +147,13 @@ def classification_score(prediction: str, ground_truth: str, **kwargs) -> float:
         score = float(best_match == ground_truth)
 
     return score
+
+def load_data():
+    datasets = ["narrativeqa", "qasper", "multifieldqa_en", "multifieldqa_zh", "hotpotqa", "2wikimqa", "musique", \
+                "dureader", "gov_report", "qmsum", "multi_news", "vcsum", "trec", "triviaqa", "samsum", "lsht", \
+                "passage_count", "passage_retrieval_en", "passage_retrieval_zh", "lcc", "repobench-p"]
+
+    data = {}
+    for dataset in datasets:
+        data[dataset] = list(jsonlines.open(f'/raid0/liyi/LCBench/longbench_data/{dataset}.jsonl'))
+    return data

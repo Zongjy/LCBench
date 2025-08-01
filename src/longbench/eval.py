@@ -157,9 +157,7 @@ def main():
     model_name = args.model + ("_" + args.desc if args.desc else "")
     save_dir = os.path.join(args.base_dir, "result", "longbench")
 
-    # 设置预测文件路径
-    pred_type = "pred_e" if args.e else "pred"
-    base_pred_path = os.path.join(save_dir, pred_type, model_name)
+    base_pred_path = os.path.join(save_dir, model_name)
 
     if not os.path.exists(base_pred_path):
         print(f"Error: Prediction directory not found at {base_pred_path}")
@@ -198,7 +196,7 @@ def main():
         scores[dataset_name] = score
 
     # 保存结果
-    out_path = os.path.join(save_dir, pred_type, model_name, "result.json")
+    out_path = os.path.join(save_dir, model_name, "result.json")
     with open(out_path, "w") as f:
         json.dump(scores, f, ensure_ascii=False, indent=4)
 
